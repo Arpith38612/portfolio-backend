@@ -28,6 +28,15 @@ app.post('/contact', async (req, res) => {
   }
 });
 
+app.get('/messages', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM messages ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 app.get('/', (req, res) => res.json({ status: 'Backend is running!' }));
 
 const PORT = process.env.PORT || 3000;
