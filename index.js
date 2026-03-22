@@ -17,6 +17,7 @@ const pool = new Pool({
 
 pool.query('CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, name VARCHAR(100), email VARCHAR(100), message TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
 
+// -- Contact Form Route --
 app.post('/contact', async (req, res) => {
   const { name, email, message } = req.body;
   if (!name || !email || !message) return res.status(400).json({ error: 'All fields are required' });
@@ -28,7 +29,22 @@ app.post('/contact', async (req, res) => {
   }
 });
 
-app.get('/messages', async (req, res) => {
+// -- Admin Login Route --
+app.post('/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === 'admin' && password === 'admin@123') {
+    res.json({ success: true, token: 'arpith-admin-token' });
+  } else {
+    res.status(401).json({ success: false, error: 'Invalid username or password' });
+  }
+});
+
+// -- Admin Messages Route (Protected) --
+app.get('/admin/messages', async (req, res) => {
+  const token = req.headers['authorization'];
+  if (token !== 'arpith-admin-token') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   try {
     const result = await pool.query('SELECT * FROM messages ORDER BY created_at DESC');
     res.json(result.rows);
