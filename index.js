@@ -53,6 +53,36 @@ app.post('/analyze', async (req, res) => {
     }
 
     const hostname = parsed.hostname;
+    // 🔥 SMART DOMAIN SIMILARITY (AI-LIKE LOGIC)
+const legitDomains = [
+  'instagram.com', 'facebook.com', 'google.com',
+  'amazon.com', 'paypal.com', 'microsoft.com',
+  'apple.com', 'netflix.com'
+];
+
+// simple similarity function
+function similarity(a, b) {
+  let matches = 0;
+  const len = Math.min(a.length, b.length);
+
+  for (let i = 0; i < len; i++) {
+    if (a[i] === b[i]) matches++;
+  }
+
+  return matches / Math.max(a.length, b.length);
+}
+
+const cleanHost = hostname.replace('www.', '');
+
+legitDomains.forEach(domain => {
+  const sim = similarity(cleanHost, domain);
+
+  if (sim > 0.6 && cleanHost !== domain)  {
+    flags.push(`fake domain detected: looks like ${domain}`);
+    reasons.push(`This domain is very similar to ${domain}, which is commonly used in phishing attacks.`);
+    score += 60; // 🔥 STRONG BOOST
+  }
+});
     const fullUrl = url.toLowerCase();
 
     if (parsed.protocol === 'http:') {
@@ -110,7 +140,34 @@ app.post('/analyze', async (req, res) => {
       reasons.push('Hyphens are often used in fake domains.');
       score += 15;
     }
+// 🔥 AI-LIKE RISK BOOST SYSTEM
 
+let aiBoost = 0;
+
+// if fake domain detected + keywords → very dangerous
+if (flags.some(f => f.includes('fake domain')) && flags.some(f => f.includes('Suspicious keywords'))) {
+  aiBoost += 30;
+  reasons.push('Combination of fake domain and phishing keywords makes this highly dangerous.');
+}
+
+// fake domain alone → high risk
+if (flags.some(f => f.includes('fake domain'))) {
+  aiBoost += 20;
+}
+
+// too many signals → boost
+if (flags.length >= 3) {
+  aiBoost += 15;
+  reasons.push('Multiple phishing indicators detected together.');
+}
+
+// suspicious domain + http
+if (flags.some(f => f.includes('fake domain')) && flags.some(f => f.includes('HTTP'))) {
+  aiBoost += 20;
+}
+
+// apply boost
+score += aiBoost;
     score = Math.min(score, 100);
 
     let risk_level;
