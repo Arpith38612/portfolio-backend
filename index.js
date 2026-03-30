@@ -35,15 +35,16 @@ pool.query(`
 `);
 
 // ── ANALYZE URL ──
+// ── ANALYZE URL ──
 app.post('/analyze', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   const flags = [];
+  const reasons = [];
   let score = 0;
 
   try {
-    // Parse URL
     let parsed;
     try {
       parsed = new URL(url.startsWith('http') ? url : 'http://' + url);
@@ -54,83 +55,76 @@ app.post('/analyze', async (req, res) => {
     const hostname = parsed.hostname;
     const fullUrl = url.toLowerCase();
 
-    // 1. Check HTTP vs HTTPS
     if (parsed.protocol === 'http:') {
       flags.push('Uses HTTP instead of HTTPS (not secure)');
+      reasons.push('This URL uses HTTP instead of HTTPS, so data is not encrypted.');
       score += 20;
     }
 
-    // 2. IP address instead of domain
     const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
     if (ipRegex.test(hostname)) {
       flags.push('Uses IP address instead of domain name');
+      reasons.push('Real websites rarely use raw IP addresses. This is suspicious.');
       score += 30;
     }
 
-    // 3. Too many subdomains
     const subdomains = hostname.split('.').length - 2;
     if (subdomains > 2) {
       flags.push(`Too many subdomains (${subdomains}) — suspicious`);
+      reasons.push('Too many subdomains are often used to fake real domains.');
       score += 20;
     }
 
-    // 4. Suspicious keywords in URL
-    const suspiciousWords = ['login', 'verify', 'secure', 'update', 'confirm', 'account', 'banking', 'paypal', 'amazon', 'apple', 'microsoft', 'google', 'free', 'winner', 'lucky', 'click', 'signin', 'password', 'credential'];
+    const suspiciousWords = ['login','verify','secure','update','confirm','account','banking','paypal','amazon','apple','microsoft','google','free','winner','lucky','click','signin','password','credential'];
     const foundWords = suspiciousWords.filter(w => fullUrl.includes(w));
     if (foundWords.length > 0) {
       flags.push(`Suspicious keywords found: ${foundWords.join(', ')}`);
+      reasons.push('Words like login, verify, or account are commonly used in phishing.');
       score += foundWords.length * 10;
     }
 
-    // 5. URL length
     if (url.length > 75) {
-      flags.push(`URL is very long (${url.length} chars) — phishing URLs tend to be long`);
+      flags.push(`URL is very long (${url.length} chars)`);
+      reasons.push('Long URLs are often used to hide malicious parts.');
       score += 15;
     }
 
-    // 6. Special characters
     const specialCount = (url.match(/[@!%#^&*]/g) || []).length;
     if (specialCount > 2) {
-      flags.push(`Too many special characters (${specialCount}) in URL`);
+      flags.push(`Too many special characters (${specialCount})`);
+      reasons.push('Special characters are used to confuse users.');
       score += 15;
     }
 
-    // 7. Lookalike domains (common brand misspellings)
-    const lookalikes = [
-      ['paypa1', 'paypal'], ['arnazon', 'amazon'], ['g00gle', 'google'],
-      ['micros0ft', 'microsoft'], ['app1e', 'apple'], ['faceb00k', 'facebook'],
-      ['netfl1x', 'netflix'], ['instagram', 'instagram']
-    ];
-    lookalikes.forEach(([fake]) => {
+    const lookalikes = ['paypa1','arnazon','g00gle','micros0ft','app1e','faceb00k','netfl1x'];
+    lookalikes.forEach(fake => {
       if (hostname.includes(fake)) {
-        flags.push(`Lookalike domain detected: "${fake}" mimics a real brand`);
+        flags.push(`Lookalike domain detected: "${fake}"`);
+        reasons.push('This domain mimics a real brand to trick users.');
         score += 40;
       }
     });
 
-    // 8. Hyphen in domain (common phishing trick)
     if (hostname.includes('-') && hostname.split('-').length > 2) {
-      flags.push('Multiple hyphens in domain — common phishing pattern');
+      flags.push('Multiple hyphens in domain');
+      reasons.push('Hyphens are often used in fake domains.');
       score += 15;
     }
 
-    // Cap score at 100
     score = Math.min(score, 100);
 
-    // Determine risk level
     let risk_level;
     if (score >= 70) risk_level = 'HIGH';
     else if (score >= 40) risk_level = 'MEDIUM';
     else if (score >= 15) risk_level = 'LOW';
     else risk_level = 'SAFE';
 
-    // Save to database
     await pool.query(
       'INSERT INTO scans (url, risk_score, risk_level, flags) VALUES ($1, $2, $3, $4)',
       [url, score, risk_level, JSON.stringify(flags)]
     );
 
-    res.json({ url, risk_score: score, risk_level, flags });
+    res.json({ url, risk_score: score, risk_level, flags, reasons });
 
   } catch (error) {
     console.error(error);
@@ -161,7 +155,25 @@ app.get('/admin/scans', async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+// ── REPORT URL ──
+pool.query(`
+  CREATE TABLE IF NOT EXISTS reports (
+    id SERIAL PRIMARY KEY,
+    url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
+app.post('/report', async (req, res) => {
+  const { url } = req.body;
+
+  try {
+    await pool.query('INSERT INTO reports (url) VALUES ($1)', [url]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Report failed' });
+  }
+});
 app.get('/', (req, res) => res.json({ status: 'PhishGuard API is running!' }));
 
 const PORT = process.env.PORT || 3000;
