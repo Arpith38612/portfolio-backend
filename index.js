@@ -4,10 +4,17 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
+// ✅ FIXED CORS (only change made)
 app.use(cors({
-  origin: 'https://arpith38612.github.io',
+  origin: [
+    "http://arpphishingguard.tech",
+    "https://arpphishingguard.tech",
+    "https://arpith38612.github.io"
+  ],
   methods: ['GET', 'POST']
 }));
+
 app.use(express.json());
 
 const pool = new Pool({
